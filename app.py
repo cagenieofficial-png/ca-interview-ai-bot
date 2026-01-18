@@ -1,5 +1,5 @@
 import streamlit as st
-from openai import OpenAI
+import openai
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="CA Interview AI Bot", layout="centered")
@@ -27,10 +27,11 @@ domain = st.selectbox(
         "Other"
     ]
 )
+
 question_type = st.selectbox(
     "Select Question Type",
     [
-        "Mixed (HR + Technical + Case Studies)",
+        "Mixed",
         "HR Questions",
         "Behavioural Questions",
         "Straightforward Technical Questions",
@@ -62,7 +63,7 @@ if generate:
     if not api_key:
         st.error("Please enter your OpenAI API key.")
     else:
-        client = OpenAI(api_key=api_key)
+        openai.api_key = api_key
 
         prompt = f"""
 You are a senior Chartered Accountant and interviewer at a Big 4 firm in India.
@@ -74,28 +75,36 @@ Candidate Profile:
 Job Description:
 {job_description if job_description else "No job description provided. Use domain-based questioning."}
 
-Task:
-Generate interview questions relevant to Indian CA interviews.
+Question Type Selected:
+{question_type}
+
+Instructions based on Question Type:
+- HR Questions: Ask only HR, personality, ethics, communication, and culture-fit questions.
+- Behavioural Questions: Ask STAR-based behavioural questions.
+- Straightforward Technical Questions: Ask direct CA technical questions.
+- Case Study / Scenario-Based Questions: Ask practical interview case studies.
+- Mixed: Balanced mix of HR, technical, behavioural, and case-based questions.
 
 Structure:
-1. 5 technical questions
-2. 3 practical / scenario-based questions
-3. 2 conceptual or judgment-based questions
+- 5 Technical Questions
+- 4 Practical / Scenario-Based Questions
+- 3 Conceptual or Judgment-Based Questions
 
 Rules:
 - Questions must be practical and interview-relevant
-- Avoid generic textbook questions
-- Focus on real-world CA exposure
+- Avoid textbook-style questions
+- Match Indian CA interview standards
 
 Sample Answers:
-{"Provide structured, interview-ready sample answers after each question." if sample_answers else "Do NOT provide sample answers."}
+{"Provide structured interview-ready answers after each question." if sample_answers else "Do NOT provide sample answers."}
 """
 
         with st.spinner("Interview in progress..."):
-            response = client.chat.completions.create(
+            response = openai.ChatCompletion.create(
                 model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}]
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7
             )
 
         st.success("Here are your interview questions 👇")
-        st.markdown(response.choices[0].message.content)
+        st.markdown(response["choices"][0]["message"]["content"])
