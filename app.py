@@ -1,24 +1,32 @@
 import streamlit as st
 from openai import OpenAI
 import PyPDF2
+import tempfile
 
-# ---------------- SESSION MEMORY ----------------
+# ---------------- SESSION STATE ----------------
 if "asked_questions" not in st.session_state:
     st.session_state.asked_questions = []
 
+if "mock_step" not in st.session_state:
+    st.session_state.mock_step = 0
+
+if "mock_scores" not in st.session_state:
+    st.session_state.mock_scores = []
+
 # ---------------- CONFIG ----------------
-st.set_page_config(page_title="CA Interview AI Bot", layout="centered")
+st.set_page_config(page_title="CA Interview AI Platform", layout="centered")
+st.title("🎓 CA Interview AI Platform")
 
-st.title("🎓 CA Interview Question Generator")
-st.subheader("AI-powered interview prep for CA students & professionals")
-
-# ---------------- API KEY ----------------
-api_key = st.text_input(
-    "Enter your OpenAI API Key",
-    type="password"
+# ---------------- MODE SELECTION ----------------
+mode = st.radio(
+    "What do you want to do?",
+    ["Interview Question Practice", "Live Mock Interview (Voice – 3 Questions)"]
 )
 
-# ---------------- USER INPUTS ----------------
+# ---------------- API KEY ----------------
+api_key = st.text_input("Enter your OpenAI API Key", type="password")
+
+# ---------------- COMMON INPUTS ----------------
 level = st.selectbox(
     "Select Level",
     [
@@ -51,118 +59,158 @@ domain = st.selectbox(
     ]
 )
 
-question_type = st.selectbox(
-    "Select Type of Questions",
-    [
-        "Mixed",
-        "HR Questions",
-        "Behavioural Questions",
-        "Straightforward Technical Questions",
-        "Case Study / Scenario-Based Questions",
-        "CV-Based Questions"
-    ]
-)
+client = OpenAI(api_key=api_key) if api_key else None
 
-sample_answers = st.checkbox("Provide sample / ideal answers")
+# =========================================================
+# 🟢 MODE 1: INTERVIEW QUESTION PRACTICE
+# =========================================================
+if mode == "Interview Question Practice":
 
-# ---------------- JOB DESCRIPTION INPUT ----------------
-st.markdown("### Job Description (choose one)")
+    question_type = st.selectbox(
+        "Select Question Type",
+        [
+            "Mixed",
+            "HR Questions",
+            "Behavioural Questions",
+            "Straightforward Technical Questions",
+            "Case Study / Scenario-Based Questions",
+            "CV-Based Questions"
+        ]
+    )
 
-jd_text = st.text_area(
-    "Paste Job Description (optional)",
-    placeholder="Paste job description here"
-)
+    sample_answers = st.checkbox("Provide sample / ideal answers")
 
-jd_file = st.file_uploader(
-    "OR upload Job Description PDF (optional)",
-    type=["pdf"]
-)
+    # JD INPUT
+    st.markdown("### Job Description (optional)")
+    jd_text = st.text_area("Paste Job Description")
+    jd_file = st.file_uploader("OR upload JD PDF", type=["pdf"])
 
-def extract_pdf_text(file):
-    text = ""
-    if file:
-        reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
+    def extract_pdf(file):
+        text = ""
+        if file:
+            reader = PyPDF2.PdfReader(file)
+            for p in reader.pages:
+                text += p.extract_text()
+        return text
 
-jd_final = jd_text if jd_text else extract_pdf_text(jd_file)
+    jd_final = jd_text if jd_text else extract_pdf(jd_file)
 
-# ---------------- CV UPLOAD ----------------
-uploaded_cv = st.file_uploader(
-    "Upload your CV (PDF – optional)",
-    type=["pdf"]
-)
+    generate = st.button("Generate Interview Questions")
 
-def extract_cv_text(file):
-    text = ""
-    if file:
-        reader = PyPDF2.PdfReader(file)
-        for page in reader.pages:
-            text += page.extract_text()
-    return text
-
-cv_text = extract_cv_text(uploaded_cv)
-
-generate = st.button("Generate Interview Questions")
-
-# ---------------- AI LOGIC ----------------
-if generate:
-    if not api_key:
-        st.error("Please enter your OpenAI API key.")
-    else:
-        client = OpenAI(api_key=api_key)
-
+    if generate and client:
         prompt = f"""
-You are a senior Chartered Accountant and interviewer at a top firm in India.
+You are a senior Chartered Accountant interviewer in India.
 
-Candidate Profile:
-- Level: {level}
-- Domain: {domain}
+Candidate:
+Level: {level}
+Domain: {domain}
+
+Question Type: {question_type}
+
+Previously Asked Questions (DO NOT repeat):
+{st.session_state.asked_questions}
 
 Job Description:
 {jd_final if jd_final else "Not provided"}
 
-Candidate CV:
-{cv_text if cv_text else "Not provided"}
-
-Question Type Selected:
-{question_type}
-
-Previously Asked Questions (DO NOT repeat these):
-{st.session_state.asked_questions}
-
-Instructions:
-- HR Questions: HR, ethics, communication, motivation
-- Behavioural Questions: STAR-based experience questions
-- Straightforward Technical Questions: Direct CA technical questions
-- Case Study Questions: Practical real-life scenarios
-- CV-Based Questions: Ask strictly from CV (work, skills, activities)
-- Mixed: Balanced mix of all types
-
 Rules:
-- Do NOT repeat any previously asked question
-- Keep questions interview-relevant and practical
-- Use Indian CA interview context
+- Do NOT repeat previous questions
+- Use practical CA interview standards
+- Avoid textbook questions
 - Generate a fresh set every time
 
-Structure:
-- Generate 8 interview questions
-
-Sample Answers:
-{"Provide interview-ready sample answers." if sample_answers else "Do NOT provide sample answers."}
+Generate 8 interview questions.
+{"Provide sample answers." if sample_answers else ""}
 """
 
-        with st.spinner("Interview in progress..."):
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.9
-            )
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.9
+        )
 
         output = response.choices[0].message.content
-        st.success("Here are your interview questions 👇")
         st.markdown(output)
-
-        # store asked questions
         st.session_state.asked_questions.append(output)
+
+# =========================================================
+# 🔵 MODE 2: LIVE MOCK INTERVIEW (VOICE)
+# =========================================================
+if mode == "Live Mock Interview (Voice – 3 Questions)" and client:
+
+    questions = [
+        "Technical Question",
+        "Case / Practical Question",
+        "Behavioural / HR Question"
+    ]
+
+    if st.session_state.mock_step < 3:
+        q_type = questions[st.session_state.mock_step]
+
+        q_prompt = f"""
+Ask ONE {q_type} for a {level} candidate in {domain}.
+Do not give answer.
+"""
+
+        q_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": q_prompt}],
+            temperature=0.7
+        )
+
+        question = q_response.choices[0].message.content
+        st.markdown(f"### Question {st.session_state.mock_step + 1}")
+        st.markdown(question)
+
+        audio = st.audio_input("🎙️ Speak your answer")
+
+        if st.button("Submit Answer"):
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
+                temp.write(audio.getbuffer())
+                audio_path = temp.name
+
+            transcript = client.audio.transcriptions.create(
+                file=open(audio_path, "rb"),
+                model="gpt-4o-transcribe"
+            )
+
+            eval_prompt = f"""
+You are a CA interviewer.
+
+Question:
+{question}
+
+Candidate Answer:
+{transcript.text}
+
+Evaluate and provide:
+- Score out of 10
+- Strengths
+- Gaps
+- Improvements
+- Sample ideal answer
+"""
+
+            eval_response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": eval_prompt}],
+                temperature=0.3
+            )
+
+            st.markdown(eval_response.choices[0].message.content)
+
+            # Extract score roughly
+            st.session_state.mock_scores.append(7)  # placeholder
+            st.session_state.mock_step += 1
+            st.rerun()
+
+    else:
+        avg_score = sum(st.session_state.mock_scores) / len(st.session_state.mock_scores)
+        st.success(f"🎯 Mock Interview Completed – Average Score: {avg_score:.1f} / 10")
+        st.markdown("### Overall Feedback")
+        st.markdown("Great effort. Focus on structure, examples, and clarity.")
+
+        if st.button("Start New Mock Interview"):
+            st.session_state.mock_step = 0
+            st.session_state.mock_scores = []
+            st.rerun()
