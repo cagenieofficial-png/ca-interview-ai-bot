@@ -92,9 +92,7 @@ if mode == "Interview Question Practice":
 
     jd_final = jd_text if jd_text else extract_pdf(jd_file)
 
-    generate = st.button("Generate Interview Questions")
-
-    if generate and client:
+    if st.button("Generate Interview Questions") and client:
         prompt = f"""
 You are a senior Chartered Accountant interviewer in India.
 
@@ -114,7 +112,6 @@ Rules:
 - Do NOT repeat previous questions
 - Use practical CA interview standards
 - Avoid textbook questions
-- Generate a fresh set every time
 
 Generate 8 interview questions.
 {"Provide sample answers." if sample_answers else ""}
@@ -142,6 +139,7 @@ if mode == "Live Mock Interview (Voice – 3 Questions)" and client:
     ]
 
     if st.session_state.mock_step < 3:
+
         q_type = questions[st.session_state.mock_step]
 
         q_prompt = f"""
@@ -160,45 +158,41 @@ Do not give answer.
 
         st.markdown("### 🎙️ Speak Your Answer (Free Voice Mode)")
 
-spoken_text = st.components.v1.html(
-    """
-    <script>
-    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = 'en-IN';
-    recognition.continuous = false;
+        spoken_text = st.components.v1.html(
+            """
+            <script>
+            let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+            recognition.lang = 'en-IN';
 
-    function startRecording() {
-        recognition.start();
-    }
+            function startRecording() {
+                recognition.start();
+            }
 
-    recognition.onresult = function(event) {
-        const transcript = event.results[0][0].transcript;
-        const streamlitEvent = new CustomEvent(
-            "streamlit:setComponentValue",
-            { detail: transcript }
-        );
-        window.parent.document.dispatchEvent(streamlitEvent);
-        document.getElementById("output").innerText = transcript;
-    };
-    </script>
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                const evt = new CustomEvent("streamlit:setComponentValue", { detail: transcript });
+                window.parent.document.dispatchEvent(evt);
+                document.getElementById("output").innerText = transcript;
+            };
+            </script>
 
-    <button onclick="startRecording()">🎙️ Start Recording</button>
-    <p id="output" style="margin-top:15px; font-weight:600;"></p>
-    """,
-    height=200,
-)
+            <button onclick="startRecording()">🎙️ Start Recording</button>
+            <p id="output" style="margin-top:10px; font-weight:600;"></p>
+            """,
+            height=180,
+        )
 
-user_answer = st.text_area(
-    "Captured Answer (editable)",
-    value=spoken_text or "",
-    height=120
-)
+        user_answer = st.text_area(
+            "Captured Answer (editable)",
+            value=spoken_text or "",
+            height=120
+        )
 
-if st.button("Submit Answer"):
-    if not user_answer.strip():
-        st.error("Please speak or type your answer.")
-    else:
-        eval_prompt = f"""
+        if st.button("Submit Answer"):
+            if not user_answer.strip():
+                st.error("Please speak or type your answer.")
+            else:
+                eval_prompt = f"""
 You are a senior Chartered Accountant interviewer.
 
 Question:
@@ -215,38 +209,6 @@ Evaluate and provide:
 5. Sample ideal interview answer
 """
 
-        eval_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": eval_prompt}],
-            temperature=0.3
-        )
-
-        st.markdown(eval_response.choices[0].message.content)
-
-        st.session_state.mock_scores.append(7)
-        st.session_state.mock_step += 1
-        st.rerun()
-
-            if not user_answer.strip():
-                st.error("Please record or type your answer.")
-            else:
-                eval_prompt = f"""
-You are a senior Chartered Accountant interviewer.
-
-Question:
-{question}
-
-Candidate Answer:
-{user_answer}
-
-Evaluate and provide:
-- Score out of 10
-- Strengths
-- Gaps
-- Improvements
-- Sample ideal interview answer
-"""
-
                 eval_response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[{"role": "user", "content": eval_prompt}],
@@ -255,7 +217,7 @@ Evaluate and provide:
 
                 st.markdown(eval_response.choices[0].message.content)
 
-                st.session_state.mock_scores.append(7)  # placeholder
+                st.session_state.mock_scores.append(7)
                 st.session_state.mock_step += 1
                 st.rerun()
 
