@@ -158,37 +158,75 @@ Do not give answer.
         st.markdown(f"### Question {st.session_state.mock_step + 1}")
         st.markdown(question)
 
-        # -------- FREE BROWSER SPEECH TO TEXT --------
         st.markdown("### 🎙️ Speak Your Answer (Free Voice Mode)")
 
-        speech_html = """
-        <script>
-        var recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = 'en-IN';
-        recognition.interimResults = false;
+spoken_text = st.components.v1.html(
+    """
+    <script>
+    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = 'en-IN';
+    recognition.continuous = false;
 
-        function startDictation() {
-            recognition.start();
-        }
+    function startRecording() {
+        recognition.start();
+    }
 
-        recognition.onresult = function(event) {
-            document.getElementById("speech_output").value =
-            event.results[0][0].transcript;
-        }
-        </script>
+    recognition.onresult = function(event) {
+        const transcript = event.results[0][0].transcript;
+        const streamlitEvent = new CustomEvent(
+            "streamlit:setComponentValue",
+            { detail: transcript }
+        );
+        window.parent.document.dispatchEvent(streamlitEvent);
+        document.getElementById("output").innerText = transcript;
+    };
+    </script>
 
-        <button onclick="startDictation()">🎙️ Start Recording</button><br><br>
-        <textarea id="speech_output" rows="5" style="width:100%;"></textarea>
-        """
+    <button onclick="startRecording()">🎙️ Start Recording</button>
+    <p id="output" style="margin-top:15px; font-weight:600;"></p>
+    """,
+    height=200,
+)
 
-        st.components.v1.html(speech_html, height=220)
+user_answer = st.text_area(
+    "Captured Answer (editable)",
+    value=spoken_text or "",
+    height=120
+)
 
-        user_answer = st.text_area(
-            "Captured Answer (you can edit before submitting)",
-            placeholder="Your spoken answer will appear here..."
+if st.button("Submit Answer"):
+    if not user_answer.strip():
+        st.error("Please speak or type your answer.")
+    else:
+        eval_prompt = f"""
+You are a senior Chartered Accountant interviewer.
+
+Question:
+{question}
+
+Candidate Answer:
+{user_answer}
+
+Evaluate and provide:
+1. Score out of 10
+2. Strengths
+3. Gaps
+4. Improvements
+5. Sample ideal interview answer
+"""
+
+        eval_response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": eval_prompt}],
+            temperature=0.3
         )
 
-        if st.button("Submit Answer"):
+        st.markdown(eval_response.choices[0].message.content)
+
+        st.session_state.mock_scores.append(7)
+        st.session_state.mock_step += 1
+        st.rerun()
+
             if not user_answer.strip():
                 st.error("Please record or type your answer.")
             else:
