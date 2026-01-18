@@ -1,7 +1,10 @@
 import streamlit as st
 from openai import OpenAI
 import PyPDF2
-import docx
+
+# ---------------- SESSION MEMORY ----------------
+if "asked_questions" not in st.session_state:
+    st.session_state.asked_questions = []
 
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="CA Interview AI Bot", layout="centered")
@@ -12,8 +15,7 @@ st.subheader("AI-powered interview prep for CA students & professionals")
 # ---------------- API KEY ----------------
 api_key = st.text_input(
     "Enter your OpenAI API Key",
-    type="password",
-    help="Required to generate interview questions"
+    type="password"
 )
 
 # ---------------- USER INPUTS ----------------
@@ -61,30 +63,43 @@ question_type = st.selectbox(
     ]
 )
 
-job_description = st.text_area(
-    "Paste Job Description (Optional)",
-    placeholder="Paste job description here if available"
+sample_answers = st.checkbox("Provide sample / ideal answers")
+
+# ---------------- JOB DESCRIPTION INPUT ----------------
+st.markdown("### Job Description (choose one)")
+
+jd_text = st.text_area(
+    "Paste Job Description (optional)",
+    placeholder="Paste job description here"
 )
 
-sample_answers = st.checkbox("Provide sample / ideal answers")
+jd_file = st.file_uploader(
+    "OR upload Job Description PDF (optional)",
+    type=["pdf"]
+)
+
+def extract_pdf_text(file):
+    text = ""
+    if file:
+        reader = PyPDF2.PdfReader(file)
+        for page in reader.pages:
+            text += page.extract_text()
+    return text
+
+jd_final = jd_text if jd_text else extract_pdf_text(jd_file)
 
 # ---------------- CV UPLOAD ----------------
 uploaded_cv = st.file_uploader(
-    "Upload your CV (PDF or DOCX) – optional",
-    type=["pdf", "docx"]
+    "Upload your CV (PDF – optional)",
+    type=["pdf"]
 )
 
 def extract_cv_text(file):
     text = ""
-    if file is not None:
-        if file.type == "application/pdf":
-            reader = PyPDF2.PdfReader(file)
-            for page in reader.pages:
-                text += page.extract_text()
-        elif file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-            doc = docx.Document(file)
-            for para in doc.paragraphs:
-                text += para.text + "\n"
+    if file:
+        reader = PyPDF2.PdfReader(file)
+        for page in reader.pages:
+            text += page.extract_text()
     return text
 
 cv_text = extract_cv_text(uploaded_cv)
@@ -106,40 +121,48 @@ Candidate Profile:
 - Domain: {domain}
 
 Job Description:
-{job_description if job_description else "Not provided"}
+{jd_final if jd_final else "Not provided"}
 
-Candidate CV Details:
-{cv_text if cv_text else "CV not provided"}
+Candidate CV:
+{cv_text if cv_text else "Not provided"}
 
 Question Type Selected:
 {question_type}
 
+Previously Asked Questions (DO NOT repeat these):
+{st.session_state.asked_questions}
+
 Instructions:
-- HR Questions: Ask HR, ethics, communication, motivation, culture-fit questions
-- Behavioural Questions: Ask STAR-based questions on past experiences
-- Straightforward Technical Questions: Ask direct CA technical questions
-- Case Study / Scenario-Based Questions: Ask practical interview case studies
-- CV-Based Questions: Ask questions strictly from CV (experience, skills, extracurriculars)
+- HR Questions: HR, ethics, communication, motivation
+- Behavioural Questions: STAR-based experience questions
+- Straightforward Technical Questions: Direct CA technical questions
+- Case Study Questions: Practical real-life scenarios
+- CV-Based Questions: Ask strictly from CV (work, skills, activities)
 - Mixed: Balanced mix of all types
 
-Structure:
-- Generate 10 interview questions aligned to the selected type
-
 Rules:
-- Keep questions practical and interview-relevant
-- Avoid textbook-style theory
+- Do NOT repeat any previously asked question
+- Keep questions interview-relevant and practical
 - Use Indian CA interview context
+- Generate a fresh set every time
+
+Structure:
+- Generate 8 interview questions
 
 Sample Answers:
-{"Provide structured, interview-ready answers after each question." if sample_answers else "Do NOT provide sample answers."}
+{"Provide interview-ready sample answers." if sample_answers else "Do NOT provide sample answers."}
 """
 
         with st.spinner("Interview in progress..."):
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7
+                temperature=0.9
             )
 
+        output = response.choices[0].message.content
         st.success("Here are your interview questions 👇")
-        st.markdown(response.choices[0].message.content)
+        st.markdown(output)
+
+        # store asked questions
+        st.session_state.asked_questions.append(output)
