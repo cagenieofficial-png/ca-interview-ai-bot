@@ -27,6 +27,16 @@ domain = st.selectbox(
         "Other"
     ]
 )
+question_type = st.selectbox(
+    "Select Question Type",
+    [
+        "Mixed (HR + Technical + Case Studies)",
+        "HR Questions",
+        "Behavioural Questions",
+        "Straightforward Technical Questions",
+        "Case Study / Scenario-Based Questions"
+    ]
+)
 
 level = st.selectbox(
     "Select Level",
