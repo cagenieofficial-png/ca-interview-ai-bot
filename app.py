@@ -1,7 +1,6 @@
 import streamlit as st
 from openai import OpenAI
 import PyPDF2
-import tempfile
 
 # ---------------- SESSION STATE ----------------
 if "asked_questions" not in st.session_state:
@@ -25,6 +24,7 @@ mode = st.radio(
 
 # ---------------- API KEY ----------------
 api_key = st.text_input("Enter your OpenAI API Key", type="password")
+client = OpenAI(api_key=api_key) if api_key else None
 
 # ---------------- COMMON INPUTS ----------------
 level = st.selectbox(
@@ -59,8 +59,6 @@ domain = st.selectbox(
     ]
 )
 
-client = OpenAI(api_key=api_key) if api_key else None
-
 # =========================================================
 # 🟢 MODE 1: INTERVIEW QUESTION PRACTICE
 # =========================================================
@@ -80,7 +78,6 @@ if mode == "Interview Question Practice":
 
     sample_answers = st.checkbox("Provide sample / ideal answers")
 
-    # JD INPUT
     st.markdown("### Job Description (optional)")
     jd_text = st.text_area("Paste Job Description")
     jd_file = st.file_uploader("OR upload JD PDF", type=["pdf"])
@@ -134,7 +131,7 @@ Generate 8 interview questions.
         st.session_state.asked_questions.append(output)
 
 # =========================================================
-# 🔵 MODE 2: LIVE MOCK INTERVIEW (VOICE)
+# 🔵 MODE 2: LIVE MOCK INTERVIEW (FREE VOICE)
 # =========================================================
 if mode == "Live Mock Interview (Voice – 3 Questions)" and client:
 
@@ -152,63 +149,81 @@ Ask ONE {q_type} for a {level} candidate in {domain}.
 Do not give answer.
 """
 
-        q_response = client.chat.completions.create(
+        question = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": q_prompt}],
             temperature=0.7
-        )
+        ).choices[0].message.content
 
-        question = q_response.choices[0].message.content
         st.markdown(f"### Question {st.session_state.mock_step + 1}")
         st.markdown(question)
 
-        audio = st.audio_input("🎙️ Speak your answer")
+        # -------- FREE BROWSER SPEECH TO TEXT --------
+        st.markdown("### 🎙️ Speak Your Answer (Free Voice Mode)")
+
+        speech_html = """
+        <script>
+        var recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.lang = 'en-IN';
+        recognition.interimResults = false;
+
+        function startDictation() {
+            recognition.start();
+        }
+
+        recognition.onresult = function(event) {
+            document.getElementById("speech_output").value =
+            event.results[0][0].transcript;
+        }
+        </script>
+
+        <button onclick="startDictation()">🎙️ Start Recording</button><br><br>
+        <textarea id="speech_output" rows="5" style="width:100%;"></textarea>
+        """
+
+        st.components.v1.html(speech_html, height=220)
+
+        user_answer = st.text_area(
+            "Captured Answer (you can edit before submitting)",
+            placeholder="Your spoken answer will appear here..."
+        )
 
         if st.button("Submit Answer"):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp:
-                temp.write(audio.getbuffer())
-                audio_path = temp.name
-
-            transcript = client.audio.transcriptions.create(
-                file=open(audio_path, "rb"),
-                model="gpt-4o-transcribe"
-            )
-
-            eval_prompt = f"""
-You are a CA interviewer.
+            if not user_answer.strip():
+                st.error("Please record or type your answer.")
+            else:
+                eval_prompt = f"""
+You are a senior Chartered Accountant interviewer.
 
 Question:
 {question}
 
 Candidate Answer:
-{transcript.text}
+{user_answer}
 
 Evaluate and provide:
 - Score out of 10
 - Strengths
 - Gaps
 - Improvements
-- Sample ideal answer
+- Sample ideal interview answer
 """
 
-            eval_response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": eval_prompt}],
-                temperature=0.3
-            )
+                eval_response = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": eval_prompt}],
+                    temperature=0.3
+                )
 
-            st.markdown(eval_response.choices[0].message.content)
+                st.markdown(eval_response.choices[0].message.content)
 
-            # Extract score roughly
-            st.session_state.mock_scores.append(7)  # placeholder
-            st.session_state.mock_step += 1
-            st.rerun()
+                st.session_state.mock_scores.append(7)  # placeholder
+                st.session_state.mock_step += 1
+                st.rerun()
 
     else:
         avg_score = sum(st.session_state.mock_scores) / len(st.session_state.mock_scores)
         st.success(f"🎯 Mock Interview Completed – Average Score: {avg_score:.1f} / 10")
-        st.markdown("### Overall Feedback")
-        st.markdown("Great effort. Focus on structure, examples, and clarity.")
 
         if st.button("Start New Mock Interview"):
             st.session_state.mock_step = 0
